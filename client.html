@@ -93,6 +93,7 @@
   button.primary { background: var(--amber); color: #1a1205; border-color: var(--amber); font-weight: 600; }
   button.primary:hover:not(:disabled) { filter: brightness(1.08); }
   button.ghost { background: transparent; }
+  button.gated { opacity: .45; cursor: not-allowed; }
   .btnrow { display: flex; gap: 8px; }
   .btnrow button { flex: 1; }
 
@@ -204,6 +205,7 @@
 <header>
   <span class="brand">Par<b>ley</b></span>
   <span class="room-tag" id="roomTag">room: —</span>
+  <button class="ghost" id="newRoom" style="padding:4px 10px; font-size:11px">+ new room</button>
   <span class="live" id="liveInd"><span class="dot"></span><span id="liveTxt">offline</span></span>
 </header>
 
@@ -237,6 +239,7 @@
       </label>
       <div class="hint" style="margin-top:2px">Available for Anthropic, OpenAI, and Gemini seats.</div>
       <button class="primary" id="joinBtn" style="width:100%">Join the room</button>
+      <div class="hint" id="joinGateHint" style="display:none; margin-top:8px; color:var(--amber)">Copy your counterpart's invite link first (on the floor to the right) — it goes away once you take your seat.</div>
     </div>
 
     <!-- SEATED state -->
@@ -300,6 +303,7 @@
           <button id="dlDeliverable">deliverable.txt</button>
         </div>
         <div class="hint" style="margin:10px 0 0">The room lives only in memory — download the record before closing.</div>
+        <button class="primary" id="newRoom2" style="width:100%; margin-top:10px">Start a new room</button>
       </div>
     </div>
   </aside>
@@ -313,8 +317,9 @@
     <div class="floor" id="floor">
       <div class="empty-floor" id="emptyFloor">
         <b>The floor is quiet.</b><br />
-        Send your counterpart their seat link:
-        <div class="invite"><code id="inviteLink"></code><button id="copyInvite">Copy link</button></div>
+        <span id="inviteIntro">Send your counterpart their seat link:</span>
+        <div class="invite" id="inviteWrap"><code id="inviteLink"></code><button id="copyInvite">Copy link</button></div>
+        <div id="floorStatus" style="display:none; margin:14px 0; color:var(--ink-dim)"></div>
         Take your seat, set a purpose, and hit Start to open the line.
       </div>
     </div>
@@ -358,8 +363,24 @@
   const inviteSeat = wantSeat === "B" ? "A" : "B";
   const inviteUrl = (PUBLIC_URL || location.origin) + "/?room=" + roomId + "&seat=" + inviteSeat;
   $("inviteLink").textContent = inviteUrl;
+  // Guests arriving via an invite link don't need to send anything — show them
+  // who's here instead of a pointless link back to seat A.
+  const isGuest = wantSeat === "B" || wantSeat === "J";
+  if (isGuest) {
+    $("inviteIntro").style.display = "none";
+    $("inviteWrap").style.display = "none";
+    $("floorStatus").style.display = "block";
+    $("floorStatus").textContent = "Checking who's here…";
+  }
+  // The room creator must copy the invite before seating — the link is easy to
+  // lose once the join panel is gone. Guests aren't gated.
+  let inviteCopied = isGuest;
+  if (!inviteCopied) $("joinBtn").classList.add("gated");
   $("copyInvite").onclick = () => {
     navigator.clipboard.writeText(inviteUrl);
+    inviteCopied = true;
+    $("joinBtn").classList.remove("gated");
+    $("joinGateHint").style.display = "none";
     $("copyInvite").textContent = "Copied ✓";
     setTimeout(() => ($("copyInvite").textContent = "Copy link"), 1400);
   };
@@ -409,6 +430,7 @@
   };
 
   $("joinBtn").onclick = () => {
+    if (!inviteCopied) { $("joinGateHint").style.display = "block"; return; }
     const payload = {
       type: "join", room: roomId, seat: wantSeat,
       name: $("name").value.trim() || "Anon",
@@ -486,6 +508,13 @@
     setTimeout(() => ($("judgeInvite").textContent = "Copy judge link"), 1400);
   };
   $("callJudge").onclick = () => send({ type: "call_judge" });
+
+  // ---- new room: drop the query string so a fresh slug gets minted ----
+  $("newRoom").onclick = () => {
+    if (mySeat && !confirm("Leave this room and start a fresh one? Download any records first.")) return;
+    location.href = location.pathname;
+  };
+  $("newRoom2").onclick = () => (location.href = location.pathname);
 
   // ---- draft approval (autonomy 0) ----
   $("approveBtn").onclick = () => {
@@ -631,6 +660,13 @@
       $("purpose").value ||= s.config.purpose || "";
       $("deliverable").value ||= s.config.deliverable || "";
       if (s.config.mode) $("mode").value = s.config.mode;
+    }
+    // guest view of the quiet floor: who's here?
+    const fst = document.getElementById("floorStatus");
+    if (fst && isGuest) {
+      fst.textContent = s.seats.A
+        ? `${s.seats.A.name} (seat A) is in the room.`
+        : "The room is empty so far — seat A hasn't arrived.";
     }
     // deliverable draft panel
     if (s.draft) {

@@ -432,11 +432,14 @@ async function stepLoop(room, roomId) {
 // Pull a [DRAFT]...[/DRAFT] block out of an agent message into the shared
 // deliverable draft panel; the spoken message is shown without it.
 function extractDraft(room, seat, text) {
-  const m = text.match(/\[DRAFT\]([\s\S]*?)\[\/DRAFT\]/i);
+  // Models get loose with the markers ("[DRAFT:", "[DRAFT The…") — accept ], :,
+  // or whitespace after the tag so a sloppy open still extracts instead of
+  // leaking onto the floor.
+  const m = text.match(/\[DRAFT[\]:\s]([\s\S]*?)\[\/DRAFT\]?/i);
   if (m && m[1].trim()) {
     room.draft = { text: m[1].trim(), by: seat, ts: Date.now() };
   }
-  return text.replace(/\[DRAFT\][\s\S]*?\[\/DRAFT\]/gi, "").trim();
+  return text.replace(/\[DRAFT[\]:\s][\s\S]*?(\[\/DRAFT\]?|$)/gi, "").trim();
 }
 
 function postAgentMessage(room, roomId, seat, rawText) {
