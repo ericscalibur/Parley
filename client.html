@@ -223,6 +223,16 @@
       </div>
       <button class="primary" id="ratifyBtn" style="display:none; width:100%; margin-top:10px">Ratify deliverable</button>
       <div class="hint" id="runHint" style="margin:10px 0 0">Both seats must be filled and the room configured before agents can begin.</div>
+
+      <!-- RECORD state — appears once both parties have ratified -->
+      <div id="downloads" style="display:none">
+        <h2>Record</h2>
+        <div class="btnrow">
+          <button id="dlTranscript">transcript.txt</button>
+          <button id="dlDeliverable">deliverable.txt</button>
+        </div>
+        <div class="hint" style="margin:10px 0 0">The room lives only in memory — download the record before closing.</div>
+      </div>
     </div>
   </aside>
 
@@ -357,6 +367,56 @@
     if (m.type === "state") { render(m); return; }
   }
 
+  // ---- record downloads ----
+  let lastState = null;
+
+  function download(filename, text) {
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([text], { type: "text/plain" }));
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function transcriptText(s) {
+    const lines = [
+      "PARLEY TRANSCRIPT",
+      "room: " + roomId,
+      "purpose: " + (s.config?.purpose || "—"),
+      "deliverable: " + (s.config?.deliverable || "—"),
+      "exported: " + new Date().toLocaleString(),
+      "",
+    ];
+    for (const t of s.transcript) {
+      const when = new Date(t.ts).toLocaleTimeString();
+      lines.push(t.seat === "system" ? `[${when}] — ${t.text}` : `[${when}] ${t.name} (seat ${t.seat}): ${t.text}`, "");
+    }
+    return lines.join("\n");
+  }
+
+  function deliverableText(s) {
+    const r = s.ratify;
+    const names = { A: s.seats.A?.name || "seat A", B: s.seats.B?.name || "seat B" };
+    // The final terms are the proposing agent's last message on the floor.
+    const final = [...s.transcript].reverse().find((t) => t.seat === r.proposedBy);
+    return [
+      "PARLEY DELIVERABLE — RATIFIED",
+      "room: " + roomId,
+      "purpose: " + (s.config?.purpose || "—"),
+      "deliverable: " + (s.config?.deliverable || "—"),
+      "",
+      `FINAL TERMS (proposed by ${names[r.proposedBy]}'s agent):`,
+      "",
+      final ? final.text : "(final terms message not found)",
+      "",
+      `Ratified by ${names.A} (seat A) and ${names.B} (seat B).`,
+      "exported: " + new Date().toLocaleString(),
+    ].join("\n");
+  }
+
+  $("dlTranscript").onclick = () => lastState && download("transcript.txt", transcriptText(lastState));
+  $("dlDeliverable").onclick = () => lastState && download("deliverable.txt", deliverableText(lastState));
+
   let lastLen = 0;
   function render(s) {
     // seats
@@ -386,7 +446,9 @@
       : "Ready. Hit Start to open the line."));
 
     // ratification
+    lastState = s;
     const r = s.ratify, rb = $("ratifyBtn");
+    $("downloads").style.display = r && r.agreed.A && r.agreed.B ? "block" : "none";
     if (r && !(r.agreed.A && r.agreed.B)) {
       const mine = mySeat && r.agreed[mySeat];
       rb.style.display = "block";
