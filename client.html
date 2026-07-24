@@ -161,6 +161,34 @@
     font-size: 13px; line-height: 1.8; max-width: 360px;
   }
   .empty-floor b { color: var(--ink-dim); }
+  /* judge */
+  .seatcard.J .pip { background: var(--amber); }
+  .msg.J { align-self: center; max-width: 85%; }
+  .msg.J .meta { justify-content: center; }
+  .msg.J .meta .name { color: var(--amber); }
+  .msg.J .bubble { border-left: 2px solid var(--amber); border-right: 2px solid var(--amber); }
+
+  /* deliverable draft + pending approval */
+  .draftbox {
+    font-family: var(--mono); font-size: 12px; line-height: 1.5; white-space: pre-wrap;
+    background: var(--panel-2); border: 1px solid var(--line); border-radius: 6px;
+    padding: 10px 12px; max-height: 240px; overflow-y: auto;
+  }
+  #approvalBar {
+    border-top: 1px solid var(--amber); padding: 12px 20px; background: var(--panel);
+  }
+
+  /* files */
+  .filerow {
+    display: flex; align-items: center; gap: 8px; font-size: 12px;
+    padding: 5px 8px; border: 1px solid var(--line); border-radius: 5px; margin-bottom: 6px;
+    color: var(--ink-dim);
+  }
+  .filerow .vis { font-family: var(--mono); font-size: 10px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-faint); margin-left: auto; }
+  .filerow .vis.pub { color: var(--amber); }
+  .filerow .rm { cursor: pointer; color: var(--ink-faint); border: none; background: none; padding: 0 2px; font-size: 13px; }
+  .filerow .rm:hover { color: var(--err); }
+
   .empty-floor .invite {
     margin: 14px 0; display: flex; gap: 8px; align-items: center;
     justify-content: center; flex-wrap: wrap;
@@ -200,6 +228,14 @@
       <div class="hint">Your key is held only for this session, in memory, and is never written to disk or shown to the other party.</div>
       <label>Brief — how your agent should represent you</label>
       <textarea id="brief" placeholder="Who you are, what you want out of this, what a good result looks like, anything your agent should know or push for."></textarea>
+      <label>Autonomy — <span id="autVal">fully autonomous</span></label>
+      <input type="range" id="autonomy" min="0" max="10" value="10" style="padding:0" />
+      <div class="hint">0 = you approve every message · 1–9 = auto-pause every N exchanges · 10 = runs until ratification</div>
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer">
+        <input type="checkbox" id="wsearch" style="width:auto; margin:0" />
+        Allow my agent to search the web
+      </label>
+      <div class="hint" style="margin-top:2px">Available for Anthropic, OpenAI, and Gemini seats.</div>
       <button class="primary" id="joinBtn" style="width:100%">Join the room</button>
     </div>
 
@@ -207,21 +243,53 @@
     <div id="livePanel" style="display:none">
       <h2>Seats</h2>
       <div id="seatA" class="seatcard A empty"><span class="pip"></span><span class="who">seat A — open</span></div>
+      <div class="hint seatstats" id="statsA" style="margin:2px 0 8px; display:none"></div>
       <div id="seatB" class="seatcard B empty"><span class="pip"></span><span class="who">seat B — open</span></div>
+      <div class="hint seatstats" id="statsB" style="margin:2px 0 8px; display:none"></div>
 
       <h2>Room</h2>
+      <label>Mode</label>
+      <select id="mode">
+        <option value="collaboration">Collaboration — co-build a shared outcome</option>
+        <option value="negotiation">Negotiation — advocate for your side</option>
+      </select>
       <label>Purpose</label>
       <input id="purpose" placeholder="What is this room for?" />
       <label>Deliverable — what "done" looks like</label>
       <input id="deliverable" placeholder="A signed SOW / a tested MVP / a decision…" />
       <button class="ghost" id="setConfig" style="width:100%">Set / update room</button>
 
-      <h2>Run</h2>
+      <h2>Judge <span class="hint" style="display:inline">(optional third seat)</span></h2>
+      <div id="seatJ" class="seatcard J empty"><span class="pip"></span><span class="who">judge seat — open</span></div>
+      <div class="hint seatstats" id="statsJ" style="margin:2px 0 8px; display:none"></div>
+      <div class="btnrow" style="margin-top:8px">
+        <button id="judgeInvite">Copy judge link</button>
+        <button id="callJudge" disabled>Call judge</button>
+      </div>
+
+      <h2>Files</h2>
+      <input type="file" id="fileInput" style="display:none" />
       <div class="btnrow">
+        <button id="fileAddPub">+ Shared</button>
+        <button id="fileAddPriv">+ Private</button>
+      </div>
+      <div id="fileList" style="margin-top:8px"></div>
+      <div class="hint" style="margin-top:6px">Shared files go to both agents; private files only to yours. Text files, 100 KB max, 5 per seat.</div>
+
+      <h2>Run</h2>
+      <label>Autonomy — <span id="autVal2"></span></label>
+      <input type="range" id="autonomy2" min="0" max="10" value="10" style="padding:0" />
+      <div class="btnrow" style="margin-top:8px">
         <button class="primary" id="startBtn">Start</button>
         <button id="pauseBtn" disabled>Pause</button>
       </div>
       <button class="primary" id="ratifyBtn" style="display:none; width:100%; margin-top:10px">Ratify deliverable</button>
+
+      <div id="draftWrap" style="display:none">
+        <h2>Deliverable draft</h2>
+        <div class="draftbox" id="draftBox"></div>
+        <div class="hint" id="draftMeta" style="margin:6px 0 0"></div>
+      </div>
       <div class="hint" id="runHint" style="margin:10px 0 0">Both seats must be filled and the room configured before agents can begin.</div>
 
       <!-- RECORD state — appears once both parties have ratified -->
@@ -238,6 +306,7 @@
 
   <section class="floor-wrap">
     <div class="floor-head">
+      <span class="deliv" id="fMode" style="color:var(--amber)"></span>
       <span class="purpose" id="fPurpose">No purpose set</span>
       <span class="deliv" id="fDeliv"></span>
     </div>
@@ -247,6 +316,15 @@
         Send your counterpart their seat link:
         <div class="invite"><code id="inviteLink"></code><button id="copyInvite">Copy link</button></div>
         Take your seat, set a purpose, and hit Start to open the line.
+      </div>
+    </div>
+    <div id="approvalBar" style="display:none">
+      <div class="hint" style="margin:0 0 6px">Your agent drafted this turn — approve to post it to the floor (the other side hasn't seen it):</div>
+      <div class="draftbox" id="pendingText"></div>
+      <textarea id="reviseNote" placeholder="Optional revision note — kept private, added to your agent's brief before it retries…" style="min-height:48px; margin:8px 0 8px"></textarea>
+      <div class="btnrow">
+        <button class="primary" id="approveBtn">Approve &amp; post</button>
+        <button id="reviseBtn">Revise &amp; retry</button>
       </div>
     </div>
     <div class="controls">
@@ -315,6 +393,21 @@
     $("liveTxt").textContent = txt;
   }
 
+  // ---- autonomy sliders ----
+  function autLabel(v) {
+    v = +v;
+    return v === 0 ? "approve every message"
+      : v === 10 ? "fully autonomous"
+      : `auto-pause every ${v} exchange${v > 1 ? "s" : ""}`;
+  }
+  $("autVal").textContent = autLabel($("autonomy").value);
+  $("autonomy").oninput = () => ($("autVal").textContent = autLabel($("autonomy").value));
+  $("autVal2").textContent = autLabel($("autonomy2").value);
+  $("autonomy2").oninput = () => {
+    $("autVal2").textContent = autLabel($("autonomy2").value);
+    send({ type: "autonomy", value: +$("autonomy2").value });
+  };
+
   $("joinBtn").onclick = () => {
     const payload = {
       type: "join", room: roomId, seat: wantSeat,
@@ -323,6 +416,8 @@
       model: $("model").value.trim() || null,
       key: $("key").value.trim(),
       brief: $("brief").value.trim(),
+      autonomy: +$("autonomy").value,
+      search: $("wsearch").checked,
     };
     if (!payload.key) { alert("Your API key is needed so your agent can speak."); return; }
     lastJoin = payload;
@@ -332,9 +427,76 @@
   $("setConfig").onclick = () => {
     send({
       type: "config",
+      mode: $("mode").value,
       purpose: $("purpose").value.trim(),
       deliverable: $("deliverable").value.trim(),
     });
+  };
+
+  // ---- files ----
+  const ownFiles = []; // { name, visibility }
+  let pendingVisibility = "private";
+  $("fileAddPub").onclick = () => { pendingVisibility = "public"; $("fileInput").click(); };
+  $("fileAddPriv").onclick = () => { pendingVisibility = "private"; $("fileInput").click(); };
+  $("fileInput").onchange = () => {
+    const f = $("fileInput").files[0];
+    $("fileInput").value = "";
+    if (!f) return;
+    if (f.size > 100_000) { addSys("File too large (100 KB max).", true); return; }
+    const reader = new FileReader();
+    reader.onload = () => send({ type: "file", name: f.name, content: reader.result, visibility: pendingVisibility });
+    reader.readAsText(f);
+  };
+  function renderFiles(state) {
+    const box = $("fileList");
+    box.innerHTML = "";
+    for (const f of ownFiles) {
+      const row = document.createElement("div");
+      row.className = "filerow";
+      row.innerHTML = `<span>${esc(f.name)}</span><span class="vis ${f.visibility === "public" ? "pub" : ""}">${f.visibility === "public" ? "shared" : "private"}</span>`;
+      const rm = document.createElement("button");
+      rm.className = "rm"; rm.textContent = "✕"; rm.title = "Remove";
+      rm.onclick = () => {
+        send({ type: "file_remove", name: f.name });
+        ownFiles.splice(ownFiles.indexOf(f), 1);
+        renderFiles(lastState);
+      };
+      row.appendChild(rm);
+      box.appendChild(row);
+    }
+    // Other seats' shared files (metadata only — content goes to the agents).
+    if (state) {
+      for (const st of ["A", "B", "J"]) {
+        if (st === mySeat) continue;
+        for (const f of state.files?.[st] || []) {
+          const row = document.createElement("div");
+          row.className = "filerow";
+          row.innerHTML = `<span>${esc(f.name)}</span><span class="vis pub">shared by ${st}</span>`;
+          box.appendChild(row);
+        }
+      }
+    }
+  }
+
+  // ---- judge ----
+  const judgeUrl = (PUBLIC_URL || location.origin) + "/?room=" + roomId + "&seat=J";
+  $("judgeInvite").onclick = () => {
+    navigator.clipboard.writeText(judgeUrl);
+    $("judgeInvite").textContent = "Copied ✓";
+    setTimeout(() => ($("judgeInvite").textContent = "Copy judge link"), 1400);
+  };
+  $("callJudge").onclick = () => send({ type: "call_judge" });
+
+  // ---- draft approval (autonomy 0) ----
+  $("approveBtn").onclick = () => {
+    send({ type: "approve_draft" });
+    $("approvalBar").style.display = "none";
+    $("reviseNote").value = "";
+  };
+  $("reviseBtn").onclick = () => {
+    send({ type: "reject_draft", note: $("reviseNote").value.trim() });
+    $("approvalBar").style.display = "none";
+    $("reviseNote").value = "";
   };
   $("startBtn").onclick = () => send({ type: "start" });
   $("pauseBtn").onclick = () => send({ type: "pause" });
@@ -355,10 +517,25 @@
       $("livePanel").style.display = "block";
       $("nudge").disabled = false; $("nudgeBtn").disabled = false;
       $("nudge").placeholder = `Private nudge to your agent (seat ${mySeat})…`;
+      $("autonomy2").value = $("autonomy").value;
+      $("autVal2").textContent = autLabel($("autonomy2").value);
+      if (mySeat === "J") $("ratifyBtn").style.display = "none";
       return;
     }
     if (m.type === "error") { addSys(m.message, true); return; }
     if (m.type === "nudge_ack") { addSys(`Your nudge was added to your agent's brief.`); return; }
+    if (m.type === "draft") {
+      $("pendingText").textContent = m.text;
+      $("approvalBar").style.display = "block";
+      return;
+    }
+    if (m.type === "file_ack") {
+      ownFiles.push({ name: m.name, visibility: m.visibility });
+      renderFiles(lastState);
+      addSys(`File "${m.name}" uploaded (${m.visibility === "public" ? "shared with both agents" : "private to your agent"}).`);
+      return;
+    }
+    if (m.type === "autonomy_ack") { return; }
     if (m.type === "thinking") {
       showThinking(m.seat);
       setLive("on", `seat ${m.seat} on air`);
@@ -397,17 +574,23 @@
   function deliverableText(s) {
     const r = s.ratify;
     const names = { A: s.seats.A?.name || "seat A", B: s.seats.B?.name || "seat B" };
-    // The final terms are the proposing agent's last message on the floor.
-    const final = [...s.transcript].reverse().find((t) => t.seat === r.proposedBy);
+    // Prefer the agent-maintained deliverable draft; fall back to the
+    // proposing agent's last message on the floor.
+    const final = s.draft
+      ? s.draft.text
+      : ([...s.transcript].reverse().find((t) => t.seat === r.proposedBy)?.text || "(final terms not found)");
     return [
       "PARLEY DELIVERABLE — RATIFIED",
       "room: " + roomId,
+      "mode: " + (s.config?.mode || "collaboration"),
       "purpose: " + (s.config?.purpose || "—"),
       "deliverable: " + (s.config?.deliverable || "—"),
       "",
-      `FINAL TERMS (proposed by ${names[r.proposedBy]}'s agent):`,
+      s.draft
+        ? `FINAL TERMS (shared draft, last updated by seat ${s.draft.by}):`
+        : `FINAL TERMS (proposed by ${names[r.proposedBy]}'s agent):`,
       "",
-      final ? final.text : "(final terms message not found)",
+      final,
       "",
       `Ratified by ${names.A} (seat A) and ${names.B} (seat B).`,
       "exported: " + new Date().toLocaleString(),
@@ -420,20 +603,43 @@
   let lastLen = 0;
   function render(s) {
     // seats
-    for (const seat of ["A","B"]) {
+    for (const seat of ["A","B","J"]) {
       const el = $("seat"+seat), info = s.seats[seat];
       if (info) {
         el.className = "seatcard " + seat;
         el.innerHTML = `<span class="pip"></span><span class="who">${esc(info.name)}</span><span class="prov">${info.provider}</span>`;
       } else {
         el.className = "seatcard " + seat + " empty";
-        el.innerHTML = `<span class="pip"></span><span class="who">seat ${seat} — open</span>`;
+        el.innerHTML = `<span class="pip"></span><span class="who">${seat === "J" ? "judge seat — open" : "seat " + seat + " — open"}</span>`;
+      }
+      // per-seat meter: turns + tokens
+      const st = s.stats?.[seat], meter = $("stats"+seat);
+      if (meter) {
+        if (st && st.turns > 0) {
+          meter.style.display = "block";
+          meter.textContent = `${st.turns} turn${st.turns > 1 ? "s" : ""} · ${(st.inTok/1000).toFixed(1)}k in / ${(st.outTok/1000).toFixed(1)}k out tokens`;
+        } else meter.style.display = "none";
       }
     }
+    $("callJudge").disabled = !s.seats.J;
     // config
+    const modeLabel = s.config?.mode === "negotiation" ? "NEGOTIATION" : (s.config ? "COLLAB" : "");
+    $("fMode").textContent = modeLabel;
     $("fPurpose").textContent = s.config?.purpose || "No purpose set";
     $("fDeliv").textContent = s.config?.deliverable ? "→ " + s.config.deliverable : "";
-    if (s.config) { $("purpose").value ||= s.config.purpose || ""; $("deliverable").value ||= s.config.deliverable || ""; }
+    if (s.config) {
+      $("purpose").value ||= s.config.purpose || "";
+      $("deliverable").value ||= s.config.deliverable || "";
+      if (s.config.mode) $("mode").value = s.config.mode;
+    }
+    // deliverable draft panel
+    if (s.draft) {
+      $("draftWrap").style.display = "block";
+      $("draftBox").textContent = s.draft.text;
+      $("draftMeta").textContent = `last updated by seat ${s.draft.by} · ${new Date(s.draft.ts).toLocaleTimeString()}`;
+    } else $("draftWrap").style.display = "none";
+    // files (other seats' shared files come from state)
+    renderFiles(s);
 
     // run controls
     const bothSeated = s.seats.A && s.seats.B;
@@ -451,7 +657,7 @@
     $("downloads").style.display = r && r.agreed.A && r.agreed.B ? "block" : "none";
     if (r && !(r.agreed.A && r.agreed.B)) {
       const mine = mySeat && r.agreed[mySeat];
-      rb.style.display = "block";
+      rb.style.display = mySeat === "J" ? "none" : "block";
       rb.disabled = !!mine;
       rb.textContent = mine ? "Ratified — waiting for the other party" : "Ratify deliverable";
       $("runHint").textContent = `Agent ${r.proposedBy} proposes the deliverable is met. Ratify to accept, or Start to keep the agents going.`;

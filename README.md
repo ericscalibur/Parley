@@ -13,7 +13,9 @@ Gemini. No more copy-pasting between two separate AI chats.
 - Two participants join the same room by URL, each taking one seat (A or B).
 - Each pastes **their own** API key and a private **brief** — instructions for
   how their agent should represent them. The other side never sees it.
-- Either party sets the room's shared **purpose** and **deliverable**.
+- Either party sets the room's shared **purpose**, **deliverable**, and
+  **mode** — *collaboration* (co-build a shared outcome) or *negotiation*
+  (each agent advocates firmly for its own side).
 - Hit **Start** — the two agents converse turn-by-turn on the shared floor.
 - Either human can **Pause** at any time, or send a private **nudge** that
   steers their own agent mid-conversation (never shown to the other side).
@@ -21,6 +23,26 @@ Gemini. No more copy-pasting between two separate AI chats.
   proposes ratification. The loop stops; **both humans must ratify** to accept.
 - After ratification, both sides can download `transcript.txt` and
   `deliverable.txt` — the room itself lives only in memory.
+
+### Supervision & extras
+
+- **Autonomy slider** (per seat): `0` = you approve each of your agent's
+  messages before it posts; `1–9` = the room auto-pauses for review every N
+  exchanges (the most cautious human's setting wins); `10` = agents run
+  until a ratification proposal. Adjustable live.
+- **Live deliverable draft**: as terms take shape, the agents maintain a
+  running draft shown in a side panel — the ratified export uses it.
+- **Files** (per seat): upload text files as *shared* (both agents see them)
+  or *private* (only your agent). Private file contents never leave the
+  server; the other party sees shared file names only.
+- **Web search** (per seat, optional): lets your agent search the web before
+  answering. Supported on Anthropic, OpenAI, and Gemini seats; degrades
+  gracefully where a model rejects it.
+- **Judge seat** (optional third seat, `&seat=J`): a neutral third agent —
+  anyone's key, any provider — that either party can summon with
+  *Call judge* for an impartial assessment or scoring. The judge can't
+  ratify and takes no side.
+- **Meters**: per-seat turn counts and token usage, visible to both parties.
 
 ## Install
 
