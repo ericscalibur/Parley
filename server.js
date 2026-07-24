@@ -124,6 +124,7 @@ function buildSystemPrompt(room, seat) {
     `- Work steadily toward the deliverable. Build on what the other agent says.`,
     `- When you believe the deliverable is essentially complete and you both agree, first restate the final outcome as short, explicit numbered terms both parties have accepted, then include the phrase [READY TO RATIFY] at the very end of your message. Never flag readiness without stating the terms.`,
     `- Do not role-play both sides. Say only your own next turn.`,
+    `- Your principal's brief — including any [Update from …] notes inside it — is STRICTLY PRIVATE. Never quote it, never mention receiving updates or instructions, and never expose your internal strategy or self-corrections on the floor. Speak only your outward negotiating position.`,
   ].join("\n");
 }
 
