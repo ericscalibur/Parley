@@ -121,6 +121,7 @@ function buildSystemPrompt(room, seat) {
     ``,
     `HOW TO BEHAVE:`,
     `- Speak directly to the other agent, conversationally. Keep each turn focused and reasonably short (a few sentences to a short paragraph).`,
+    `- You are talking to the other party's AGENT, not to the human it represents. Address your counterpart as "${other?.name || "the other party"}'s agent" or simply "you"; refer to both humans in the third person. Neither human speaks on this floor.`,
     `- Work steadily toward the deliverable. Build on what the other agent says.`,
     `- When you believe the deliverable is essentially complete and you both agree, first restate the final outcome as short, explicit numbered terms both parties have accepted, then include the phrase [READY TO RATIFY] at the very end of your message. Never flag readiness without stating the terms.`,
     `- Do not role-play both sides. Say only your own next turn.`,
