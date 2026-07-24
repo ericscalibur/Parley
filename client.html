@@ -237,8 +237,17 @@
 
 <script>
   const qs = new URLSearchParams(location.search);
-  const roomId = qs.get("room") || "demo";
   const wantSeat = qs.get("seat"); // optional 'A' or 'B'
+  let roomId = qs.get("room");
+  if (!roomId) {
+    // No room named — mint a fresh unguessable one and put it in the address
+    // bar so the link can be copied and sent to the other party. The room name
+    // is the only secret protecting a room; never default to a guessable one.
+    const alpha = "abcdefghjkmnpqrstuvwxyz23456789";
+    roomId = Array.from(crypto.getRandomValues(new Uint8Array(12)), (b) => alpha[b % alpha.length])
+      .join("").replace(/(.{4})(?=.)/g, "$1-");
+    history.replaceState(null, "", `?room=${roomId}` + (wantSeat ? `&seat=${wantSeat}` : ""));
+  }
   document.getElementById("roomTag").textContent = "room: " + roomId;
 
   let ws, mySeat = null, lastJoin = null, retryMs = 1000;
