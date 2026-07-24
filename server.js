@@ -322,7 +322,11 @@ async function stepLoop(room, roomId) {
 const server = http.createServer((req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
   if (url.pathname === "/" || url.pathname === "/index.html") {
-    const html = fs.readFileSync(path.join(__dirname, "client.html"), "utf8");
+    // PUBLIC_URL (e.g. the tunnel URL) lets the page build shareable invite
+    // links that work for a remote counterpart, not just localhost.
+    const html = fs
+      .readFileSync(path.join(__dirname, "client.html"), "utf8")
+      .replace("__PUBLIC_URL__", process.env.PUBLIC_URL || "");
     res.writeHead(200, { "content-type": "text/html" });
     res.end(html);
     return;

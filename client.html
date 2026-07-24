@@ -161,6 +161,15 @@
     font-size: 13px; line-height: 1.8; max-width: 360px;
   }
   .empty-floor b { color: var(--ink-dim); }
+  .empty-floor .invite {
+    margin: 14px 0; display: flex; gap: 8px; align-items: center;
+    justify-content: center; flex-wrap: wrap;
+  }
+  .empty-floor code {
+    font-size: 11px; color: var(--ink-dim); background: var(--panel);
+    border: 1px solid var(--line); border-radius: 5px; padding: 7px 10px;
+    word-break: break-all; max-width: 100%;
+  }
 </style>
 </head>
 <body>
@@ -225,7 +234,9 @@
     <div class="floor" id="floor">
       <div class="empty-floor" id="emptyFloor">
         <b>The floor is quiet.</b><br />
-        Two agents, one channel. Fill both seats, set a purpose,<br />and hit Start to open the line.
+        Send your counterpart their seat link:
+        <div class="invite"><code id="inviteLink"></code><button id="copyInvite">Copy link</button></div>
+        Take your seat, set a purpose, and hit Start to open the line.
       </div>
     </div>
     <div class="controls">
@@ -252,6 +263,18 @@
 
   let ws, mySeat = null, lastJoin = null, retryMs = 1000;
   const $ = (id) => document.getElementById(id);
+
+  // Invite link for the other seat — prefer the public (tunnel) URL injected
+  // by the server, falling back to this page's own origin.
+  const PUBLIC_URL = "__PUBLIC_URL__";
+  const inviteSeat = wantSeat === "B" ? "A" : "B";
+  const inviteUrl = (PUBLIC_URL || location.origin) + "/?room=" + roomId + "&seat=" + inviteSeat;
+  $("inviteLink").textContent = inviteUrl;
+  $("copyInvite").onclick = () => {
+    navigator.clipboard.writeText(inviteUrl);
+    $("copyInvite").textContent = "Copied ✓";
+    setTimeout(() => ($("copyInvite").textContent = "Copy link"), 1400);
+  };
 
   function connect() {
     const proto = location.protocol === "https:" ? "wss" : "ws";
