@@ -36,6 +36,8 @@ function getRoom(id) {
       running: false,
       ratify: null, // { proposedBy: 'A'|'B', agreed: { A: bool, B: bool } }
       draft: null, // { text, by, ts } — agent-maintained deliverable draft
+      finalDoc: null, // { text, by, ts } — post-ratification compiled document
+      compiling: false,
       pendingDraft: null, // { seat, text } — awaiting human approval (autonomy 0)
       msgsSinceStart: 0,
       judging: false,
@@ -73,6 +75,8 @@ function broadcast(room) {
     running: room.running,
     ratify: room.ratify,
     draft: room.draft,
+    finalDoc: room.finalDoc,
+    compiling: room.compiling,
     stats: room.stats,
     files: publicFiles,
     seats: { A: publicSeat(room.seats.A), B: publicSeat(room.seats.B), J: publicSeat(room.seats.J) },
@@ -171,6 +175,7 @@ function buildSystemPrompt(room, seat) {
     `- Work steadily toward the deliverable. Build on what the other agent says.`,
     `- When you believe the deliverable is essentially complete and you both agree, first restate the final outcome as short, explicit numbered terms both parties have accepted, then include the phrase [READY TO RATIFY] at the very end of your message. Never flag readiness without stating the terms.`,
     `- Do not role-play both sides. Say only your own next turn.`,
+    `- Do not prefix your messages with your own name or "…'s agent:" — the interface already labels each speaker.`,
     `- Your principal's brief — including any [Update from …] notes inside it — and your private files are STRICTLY PRIVATE. Never quote them, never mention receiving updates or instructions, and never expose your internal strategy or self-corrections on the floor. Speak only your outward negotiating position.`,
     `- Once concrete terms begin to form, maintain a running draft of the deliverable: append the complete current draft to your message between [DRAFT] and [/DRAFT] markers, updating it each turn as terms evolve. The humans see this draft in a side panel; it is stripped from your spoken message.`,
   ].join("\n");
@@ -225,7 +230,7 @@ function transcriptToMessages(room, seat) {
 async function callAnthropic(seatState, system, messages, opts = {}) {
   const body = {
     model: seatState.model || "claude-opus-4-8",
-    max_tokens: opts.search ? 2000 : 700,
+    max_tokens: opts.maxTokens || (opts.search ? 2000 : 700),
     system,
     messages,
   };
@@ -264,7 +269,7 @@ async function callOpenAI(seatState, system, messages, opts = {}) {
     // Newer OpenAI models reject `max_tokens` and require `max_completion_tokens`.
     // GPT-5.x are reasoning-capable and reasoning tokens count against this cap,
     // so leave headroom above the visible-output budget the floor actually needs.
-    max_completion_tokens: 1500,
+    max_completion_tokens: opts.maxTokens || 1500,
     messages: [{ role: "system", content: system }, ...messages],
   };
   if (opts.search) body.web_search_options = {};
@@ -301,7 +306,7 @@ async function callNous(seatState, system, messages, opts = {}) {
     },
     {
       model: seatState.model || "nousresearch/hermes-4-405b",
-      max_tokens: 700,
+      max_tokens: opts.maxTokens || 700,
       messages: [{ role: "system", content: system }, ...messages],
     }
   );
@@ -318,7 +323,7 @@ async function callNous(seatState, system, messages, opts = {}) {
 async function callGemini(seatState, system, messages, opts = {}) {
   const body = {
     model: seatState.model || "gemini-3.6-flash",
-    max_tokens: 2000,
+    max_tokens: opts.maxTokens || 2000,
     messages: [{ role: "system", content: system }, ...messages],
   };
   if (opts.search) body.tools = [{ google_search: {} }];
@@ -365,6 +370,36 @@ async function runAgentTurn(room, seat) {
   }
 }
 
+// One dedicated big-budget turn AFTER ratification: assemble the complete
+// final document from the reference files + ratified terms + transcript.
+// Negotiation turns stay short; this is where the full artifact gets written.
+async function compileDocument(room, seat) {
+  const s = room.seats[seat];
+  const shared = ["A", "B"].flatMap((st) =>
+    (room.seats[st]?.files || [])
+      .filter((f) => f.visibility === "public")
+      .map((f) => `--- ${f.name} ---\n${f.content}`)
+  );
+  const floor = room.transcript
+    .filter((t) => t.seat !== "system")
+    .map((t) => `${t.name}'s agent: ${t.text}`)
+    .join("\n\n");
+  const system = [
+    `You are ${s.name}'s agent. A negotiation has concluded and BOTH parties ratified the terms. Your task now is document assembly, not negotiation.`,
+    `Produce the COMPLETE final document implementing everything agreed: start from the shared reference document if one exists, apply every negotiated change, and fill in fields with the values the negotiation established (names, rates, dates, jurisdictions, entities). Keep [BRACKETED PLACEHOLDERS] only where the negotiation genuinely left a value unspecified.`,
+    `Output ONLY the final document text — no commentary, no markdown fences, no explanations before or after.`,
+  ].join("\n");
+  const content = [
+    shared.length ? `REFERENCE DOCUMENT(S):\n\n${shared.join("\n\n")}` : `(no reference document was shared — assemble the document from the negotiation alone)`,
+    room.draft?.text ? `RATIFIED TERMS (shared draft):\n\n${room.draft.text}` : ``,
+    `NEGOTIATION TRANSCRIPT:\n\n${floor}`,
+    `Produce the complete final document now.`,
+  ]
+    .filter(Boolean)
+    .join("\n\n————————————\n\n");
+  return providerCall(s, system, [{ role: "user", content }], { maxTokens: 8000 });
+}
+
 async function runJudgeTurn(room) {
   const j = room.seats.J;
   if (!j) throw new Error("no judge seated");
@@ -409,7 +444,7 @@ async function stepLoop(room, roomId) {
         continue;
       }
       room.running = false;
-      systemNote(room, `Agent ${seat} error: ${e.message}. Hit Start to resume when ready.`);
+      systemNote(room, `Agent ${seat} error: ${e.message}. Hit Resume when ready.`);
       broadcast(room);
       return;
     }
@@ -467,7 +502,7 @@ function postAgentMessage(room, roomId, seat, rawText) {
     if (cadence < 10 && room.msgsSinceStart >= cadence * 2) {
       room.running = false;
       room.msgsSinceStart = 0;
-      systemNote(room, `Auto-paused after ${cadence} exchange${cadence > 1 ? "s" : ""} for review (autonomy setting). Hit Start to continue.`);
+      systemNote(room, `Auto-paused after ${cadence} exchange${cadence > 1 ? "s" : ""} for review (autonomy setting). Hit Resume to continue.`);
     }
   }
   broadcast(room);
@@ -664,6 +699,36 @@ wss.on("connection", (ws) => {
       }
       sendTo(room, seat, { type: "nudge_ack", text: msg.note || "draft rejected — regenerating" });
       if (room.running) stepLoop(room, roomId); // same seat regenerates its turn
+      return;
+    }
+
+    // Compile the final document (post-ratification, either party's agent).
+    if (msg.type === "compile") {
+      if (seat === "J") return;
+      if (!room.ratify || !(room.ratify.agreed.A && room.ratify.agreed.B)) {
+        sendTo(room, seat, { type: "error", message: "Compile is available once both parties have ratified." });
+        return;
+      }
+      if (room.compiling) return;
+      const s = room.seats[seat];
+      if (!s) return;
+      room.compiling = true;
+      systemNote(room, `${s.name} asked their agent to compile the final document…`);
+      broadcast(room);
+      compileDocument(room, seat)
+        .then((result) => {
+          const st = room.stats[seat];
+          st.turns += 1;
+          st.inTok += result.usage.inTok;
+          st.outTok += result.usage.outTok;
+          room.finalDoc = { text: result.text, by: seat, ts: Date.now() };
+          systemNote(room, `Final document compiled by ${s.name}'s agent (${(result.text.length / 1000).toFixed(1)} KB) — download it from the Record section.`);
+        })
+        .catch((e) => systemNote(room, `Compile error: ${e.message}`))
+        .finally(() => {
+          room.compiling = false;
+          broadcast(room);
+        });
       return;
     }
 

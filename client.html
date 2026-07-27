@@ -302,7 +302,9 @@
           <button id="dlTranscript">transcript.txt</button>
           <button id="dlDeliverable">deliverable.txt</button>
         </div>
-        <div class="hint" style="margin:10px 0 0">The room lives only in memory — download the record before closing.</div>
+        <button class="ghost" id="compileBtn" style="width:100%; margin-top:8px">Compile final document</button>
+        <button id="dlDocument" style="width:100%; margin-top:8px; display:none">document.txt</button>
+        <div class="hint" style="margin:10px 0 0">Compile has your agent assemble the complete final document (contract, spec, etc.) from the ratified terms and any shared files. The room lives only in memory — download the record before closing.</div>
         <button class="primary" id="newRoom2" style="width:100%; margin-top:10px">Start a new room</button>
       </div>
     </div>
@@ -628,6 +630,8 @@
 
   $("dlTranscript").onclick = () => lastState && download("transcript.txt", transcriptText(lastState));
   $("dlDeliverable").onclick = () => lastState && download("deliverable.txt", deliverableText(lastState));
+  $("compileBtn").onclick = () => send({ type: "compile" });
+  $("dlDocument").onclick = () => lastState?.finalDoc && download("document.txt", lastState.finalDoc.text);
 
   let lastLen = 0;
   function render(s) {
@@ -679,6 +683,9 @@
 
     // run controls
     const bothSeated = s.seats.A && s.seats.B;
+    // "Start" opens the line the first time; any later resume of an existing
+    // conversation is labeled "Resume".
+    $("startBtn").textContent = s.transcript.some((t) => t.seat !== "system") ? "Resume" : "Start";
     $("startBtn").disabled = s.running || !bothSeated || !s.config;
     $("pauseBtn").disabled = !s.running;
     $("runHint").textContent = s.running
@@ -691,12 +698,15 @@
     lastState = s;
     const r = s.ratify, rb = $("ratifyBtn");
     $("downloads").style.display = r && r.agreed.A && r.agreed.B ? "block" : "none";
+    $("compileBtn").disabled = !!s.compiling;
+    $("compileBtn").textContent = s.compiling ? "Compiling…" : (s.finalDoc ? "Recompile document" : "Compile final document");
+    $("dlDocument").style.display = s.finalDoc ? "block" : "none";
     if (r && !(r.agreed.A && r.agreed.B)) {
       const mine = mySeat && r.agreed[mySeat];
       rb.style.display = mySeat === "J" ? "none" : "block";
       rb.disabled = !!mine;
       rb.textContent = mine ? "Ratified — waiting for the other party" : "Ratify deliverable";
-      $("runHint").textContent = `Agent ${r.proposedBy} proposes the deliverable is met. Ratify to accept, or Start to keep the agents going.`;
+      $("runHint").textContent = `Agent ${r.proposedBy} proposes the deliverable is met. Ratify to accept, or Resume to keep the agents going.`;
     } else {
       rb.style.display = "none";
       if (r) $("runHint").textContent = "Ratified by both parties. The transcript is the record.";
